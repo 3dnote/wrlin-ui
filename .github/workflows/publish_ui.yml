@@ -1,0 +1,45 @@
+name: Publish UI to public repo (gh-pages)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  publish-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Prepare UI files
+        run: |
+          mkdir -p ui_publish
+          rsync -av --delete data/ ui_publish/
+          if [ ! -f ui_publish/index.html ]; then echo "ERROR: data/index.html missing"; exit 1; fi
+      - name: Clone target repo
+        env:
+          PUBLISH_TOKEN: ${{ secrets.UI_PUBLISH_TOKEN }}
+        run: |
+          git clone --branch gh-pages "https://x-access-token:${PUBLISH_TOKEN}@github.com/3dnote/wrlin-ui.git" /tmp/wrlin-ui || (
+            git clone "https://x-access-token:${PUBLISH_TOKEN}@github.com/3dnote/wrlin-ui.git" /tmp/wrlin-ui
+            cd /tmp/wrlin-ui
+            git checkout --orphan gh-pages
+            git rm -rf .
+            git commit --allow-empty -m "create gh-pages branch"
+            git push origin gh-pages
+            cd $GITHUB_WORKSPACE
+            git clone --branch gh-pages "https://x-access-token:${PUBLISH_TOKEN}@github.com/3dnote/wrlin-ui.git" /tmp/wrlin-ui
+          )
+      - name: Sync UI
+        run: |
+          cd /tmp/wrlin-ui
+          rsync -av --delete $GITHUB_WORKSPACE/ui_publish/ ./
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to publish"
+          else
+            git commit -m "Publish UI"
+            git push origin gh-pages
+          fi
+      - name: Done
+        run: echo "Published UI!"
